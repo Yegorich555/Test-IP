@@ -56,7 +56,17 @@ namespace TestIP
                 endpoints.MapGet("/myip", async context =>
                 {
                     var ip = context.Connection.RemoteIpAddress.MapToIPv4()?.ToString();
-                    await context.Response.WriteAsync(ip ?? "null");
+                    var header = context.Request.Headers["X-Forwarded-For"].ToString();
+
+                    var str = new StringBuilder();
+                    str.Append(ip ?? "null");
+                    if (!string.IsNullOrEmpty(header))
+                    {
+                        str.AppendLine(" - context.Connection.RemoteIpAddress.MapToIPv4()?.ToString()");
+                        str.Append(header ?? "null");
+                        str.AppendLine(" - header 'X-Forwarded-For'");
+                    }
+                    await context.Response.WriteAsync(str.ToString());
                 });
                 endpoints.MapGet("/checkip", async context =>
                 {
@@ -68,7 +78,7 @@ namespace TestIP
                     var res = await client.SendAsync(req);
                     var ip = await res.Content.ReadAsStringAsync();
 
-                    await context.Response.WriteAsync("MyIp: " + ip);
+                    await context.Response.WriteAsync("MyIp (output traffic): " + ip);
                 });
                 endpoints.MapGet("/start", async context =>
                 {
