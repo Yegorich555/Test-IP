@@ -53,6 +53,7 @@ namespace TestIP
                     str.Append("</div>");
                     await response.WriteAsync(str.ToString());
                 });
+                endpoints.MapGet("/health", async context => await context.Response.WriteAsync("healthy"));
                 endpoints.MapGet("/myip", async context =>
                 {
                     var ip = context.Connection.RemoteIpAddress.MapToIPv4()?.ToString();
