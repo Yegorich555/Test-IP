@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -27,6 +29,11 @@ namespace TestIP
                 app.UseDeveloperExceptionPage();
             }
 
+            app.UseForwardedHeaders(new ForwardedHeadersOptions
+            {
+                ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+            });
+
             app.UseRouting();
             var url = "";
             app.UseEndpoints(endpoints =>
@@ -35,10 +42,33 @@ namespace TestIP
                 {
                     var response = context.Response;
                     response.ContentType = "text/html; charset=utf-8";
-                    await response.WriteAsync("Use<br/><a href='/start?url=https://to.some.route'>/start?https://to.some.route</a> to ping<br/><a href='/stop'>/stop</a> to stop");
+                    Debug.WriteLine(context.Connection.RemoteIpAddress);
 
-                    //context.Response.Headers.Add("ContentType", "text/html; charset=utf-8");
-                    //await context.Response.WriteAsync("Use\n  <a href='/start?https://to.some.route'>/start?https://to.some.route</a> to ping\n  <a href='/stop'>/stop</a> to stop");
+                    var str = new StringBuilder("Use <br/>");
+                    str.Append("<div style='white-space:pre'>");
+                    str.AppendLine("to detect own IP: <a href='/checkip?url=https://to.route'>/checkip?url=https://to.some.route.that.returns.IP</a>");
+                    str.AppendLine("to return IP of request-sender: <a href='/myip'>/myip</a>");
+                    str.AppendLine("to ping: <a href='/start?url=https://to.some.route'>/start?url=https://to.some.route</a>");
+                    str.AppendLine("to stop :<a href='/stop'>/stop</a>");
+                    str.Append("</div>");
+                    await response.WriteAsync(str.ToString());
+                });
+                endpoints.MapGet("/myip", async context =>
+                {
+                    var ip = context.Connection.RemoteIpAddress.MapToIPv4()?.ToString();
+                    await context.Response.WriteAsync(ip ?? "null");
+                });
+                endpoints.MapGet("/checkip", async context =>
+                {
+                    url = context.Request.Query["url"].ToString(); //context.Request.RouteValues["url"].ToString();
+
+                    var req = new HttpRequestMessage(HttpMethod.Get, url);
+                    req.Headers.Add("User-Agent", "HttpClientFactory-Sample");
+                    using var client = new HttpClient();
+                    var res = await client.SendAsync(req);
+                    var ip = await res.Content.ReadAsStringAsync();
+
+                    await context.Response.WriteAsync("MyIp: " + ip);
                 });
                 endpoints.MapGet("/start", async context =>
                 {
