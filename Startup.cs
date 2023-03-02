@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using System;
 using System.Diagnostics;
 using System.Net.Http;
@@ -21,21 +20,21 @@ namespace TestIP
         {
         }
 
+        string _url = "";
+
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-            if (env.IsDevelopment())
+            app.Use(async delegate (HttpContext context, Func<Task> next)
             {
-                app.UseDeveloperExceptionPage();
-            }
-
-            app.UseForwardedHeaders(new ForwardedHeadersOptions
-            {
-                ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+                try { await next.Invoke(); }
+                catch (Exception ex) { await context.Response.WriteAsync(ex.ToString()); }
             });
 
+            app.UseForwardedHeaders(new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto });
             app.UseRouting();
-            var url = "";
+            _url = "";
+
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapGet("/", async context =>
@@ -56,42 +55,56 @@ namespace TestIP
                 endpoints.MapGet("/health", async context => await context.Response.WriteAsync("healthy"));
                 endpoints.MapGet("/myip", async context =>
                 {
-                    var ip = context.Connection.RemoteIpAddress.MapToIPv4()?.ToString();
-                    var header = context.Request.Headers["X-Forwarded-For"].ToString();
-
-                    var str = new StringBuilder();
-                    str.Append(ip ?? "null");
-                    if (!string.IsNullOrEmpty(header))
+                    try
                     {
-                        str.AppendLine(" - context.Connection.RemoteIpAddress.MapToIPv4()?.ToString()");
-                        str.Append(header ?? "null");
-                        str.AppendLine(" - header 'X-Forwarded-For'");
+                        var ip = context.Connection.RemoteIpAddress.MapToIPv4()?.ToString();
+                        var header = context.Request.Headers["X-Forwarded-For"].ToString();
+
+                        var str = new StringBuilder();
+                        str.Append(ip ?? "null");
+                        if (!string.IsNullOrEmpty(header))
+                        {
+                            str.AppendLine(" - context.Connection.RemoteIpAddress.MapToIPv4()?.ToString()");
+                            str.Append(header ?? "null");
+                            str.AppendLine(" - header 'X-Forwarded-For'");
+                        }
+                        await context.Response.WriteAsync(str.ToString());
                     }
-                    await context.Response.WriteAsync(str.ToString());
+                    catch (Exception ex)
+                    {
+                        await context.Response.WriteAsync(ex.ToString());
+                    }
                 });
                 endpoints.MapGet("/checkip", async context =>
                 {
-                    url = context.Request.Query["url"].ToString(); //context.Request.RouteValues["url"].ToString();
+                    try
+                    {
+                        _url = context.Request.Query["url"].ToString(); //context.Request.RouteValues["url"].ToString();
 
-                    var req = new HttpRequestMessage(HttpMethod.Get, url);
-                    req.Headers.Add("User-Agent", "HttpClientFactory-Sample");
-                    using var client = new HttpClient();
-                    var res = await client.SendAsync(req);
-                    var ip = await res.Content.ReadAsStringAsync();
+                        var req = new HttpRequestMessage(HttpMethod.Get, _url);
+                        req.Headers.Add("User-Agent", "HttpClientFactory-Sample");
+                        using var client = new HttpClient();
+                        var res = await client.SendAsync(req);
+                        var ip = await res.Content.ReadAsStringAsync();
 
-                    await context.Response.WriteAsync("MyIp (output traffic): " + ip);
+                        await context.Response.WriteAsync("MyIp (output traffic): " + ip);
+                    }
+                    catch (Exception ex)
+                    {
+                        await context.Response.WriteAsync(ex.ToString());
+                    }
                 });
                 endpoints.MapGet("/start", async context =>
                 {
-                    url = context.Request.Query["url"].ToString(); //context.Request.RouteValues["url"].ToString();
-                    PingStart(url);
-                    await context.Response.WriteAsync("Started for " + url);
+                    _url = context.Request.Query["url"].ToString(); //context.Request.RouteValues["url"].ToString();
+                    PingStart(_url);
+                    await context.Response.WriteAsync("Started for " + _url);
                 });
                 endpoints.MapGet("/stop", async context =>
                 {
                     tokenSource.Cancel();
-                    url = "";
-                    await context.Response.WriteAsync("Stopped for " + url);
+                    _url = "";
+                    await context.Response.WriteAsync("Stopped for " + _url);
                 });
             });
         }
